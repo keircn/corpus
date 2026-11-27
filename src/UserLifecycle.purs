@@ -10,7 +10,7 @@ import Config (UserEntry, s3ConfigFromUser)
 import Data.Array (mapMaybe) as Array
 import Data.Foldable (for_)
 import Data.Int as Int
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, isJust, isNothing)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Db (connect, getOrCreateToken, initDb, initReleaseMetadata)
@@ -69,8 +69,11 @@ startUser isRegistered { slug, name, config } = do
       ] # Array.mapMaybe identity
 
   enrichMetadataFiber <- forkAff $ enrichMetadata conn config slug
+  when (config.backupEnabled && isNothing config.s3Bucket)
+    $ Log.warn
+    $ "User '" <> slug <> "': backup disabled (no S3 bucket configured)"
   backupFiber <-
-    if config.backupEnabled then Just <$> forkAff
+    if config.backupEnabled && isJust config.s3Bucket then Just <$> forkAff
       ( backupDb conn writeLock config.databaseFile (s3ConfigFromUser config)
           (Int.toNumber config.backupIntervalHours * 3600000.0)
           slug

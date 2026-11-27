@@ -187,6 +187,15 @@ loadConfig path = do
     Left msg -> throwError (error msg)
     Right cfg -> pure cfg
 
+-- | Read an optional environment variable, treating an empty string as unset.
+lookupEnvOpt :: String -> Aff (Maybe String)
+lookupEnvOpt key = do
+  val <- liftEffect $ lookupEnv key
+  pure $ case val of
+    Just "" -> Nothing
+    Just v -> Just v
+    Nothing -> Nothing
+
 -- Fills shared credentials and resolves the database path from the environment.
 -- | Fill shared credentials and resolve the database path from the environment.
 fillUserConfigFromEnv :: UserConfig -> Aff UserConfig
@@ -194,12 +203,12 @@ fillUserConfigFromEnv cfg = do
   lastfmApiKey <- liftEffect $ lookupEnv "LASTFM_API_KEY"
   discogsToken <- liftEffect $ lookupEnv "DISCOGS_TOKEN"
   cosineApiKey <- liftEffect $ lookupEnv "COSINE_API_KEY"
-  s3Bucket <- liftEffect $ lookupEnv "S3_BUCKET"
+  s3Bucket <- lookupEnvOpt "S3_BUCKET"
   s3Region <- liftEffect $ map (fromMaybe "us-east-1") $ lookupEnv "S3_REGION"
-  awsAccessKeyId <- liftEffect $ lookupEnv "AWS_ACCESS_KEY_ID"
-  awsSecretAccessKey <- liftEffect $ lookupEnv "AWS_SECRET_ACCESS_KEY"
-  awsEndpointUrl <- liftEffect $ lookupEnv "AWS_ENDPOINT_URL"
-  awsS3AddressingStyle <- liftEffect $ lookupEnv "AWS_S3_ADDRESSING_STYLE"
+  awsAccessKeyId <- lookupEnvOpt "AWS_ACCESS_KEY_ID"
+  awsSecretAccessKey <- lookupEnvOpt "AWS_SECRET_ACCESS_KEY"
+  awsEndpointUrl <- lookupEnvOpt "AWS_ENDPOINT_URL"
+  awsS3AddressingStyle <- lookupEnvOpt "AWS_S3_ADDRESSING_STYLE"
   databasePath <- liftEffect $ lookupEnv "DATABASE_PATH"
   defaultPath <- liftEffect cwd
   let
@@ -224,6 +233,8 @@ validateConfig cfg = do
   _ <- traverse validateUserEntry cfg.users
   pure cfg
 
+-- | Validate a user entry. Object storage is optional: when no S3 bucket is
+-- | configured, cover caching and database backups are skipped.
 validateUserEntry :: UserEntry -> Either String UserEntry
 validateUserEntry entry =
   let
@@ -233,18 +244,7 @@ validateUserEntry entry =
       if isJust c.lastfmUser && isNothing c.lastfmApiKey then
         [ "LASTFM_API_KEY" ]
       else []
-    s3Missing =
-      if c.coverCacheEnabled || c.backupEnabled then
-        (if isNothing c.s3Bucket then [ "S3_BUCKET" ] else [])
-          <>
-            (if isNothing c.awsAccessKeyId then [ "AWS_ACCESS_KEY_ID" ] else [])
-          <>
-            ( if isNothing c.awsSecretAccessKey then [ "AWS_SECRET_ACCESS_KEY" ]
-              else []
-            )
-          <> (if isNothing c.awsEndpointUrl then [ "AWS_ENDPOINT_URL" ] else [])
-      else []
-    missing = lfmMissing <> s3Missing
+    missing = lfmMissing
   in
     if missing == [] then Right entry
     else Left
