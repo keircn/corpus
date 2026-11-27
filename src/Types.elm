@@ -50,7 +50,6 @@ type alias Registration =
     , name : String
     , email : String
     , listenbrainzUser : Maybe String
-    , lastfmUser : Maybe String
     }
 
 
@@ -67,7 +66,6 @@ type RegField
     | FName
     | FEmail
     | FLbUser
-    | FLfUser
 
 
 type Period
@@ -162,7 +160,6 @@ type alias Model =
     , regName : String
     , regEmail : String
     , regLbUser : String
-    , regLfUser : String
     , regSubmitting : Bool
     , regSubmitted : Bool
     , regError : Maybe String

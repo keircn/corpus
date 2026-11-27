@@ -62,7 +62,7 @@ import Registrations
   , validSlugFormat
   )
 import Stats (getStats)
-import Sync (lastfmTrackToListen, listenBrainzUrl, parseLastfmResponse)
+import Sync (listenBrainzUrl)
 import Templates (indexHtml)
 import Test.Spec (describe, it)
 import Test.Spec.Assertions (fail, shouldEqual)
@@ -156,8 +156,6 @@ main = runSpecAndExitProcess [ consoleReporter ] do
       let
         coverConfig =
           { listenbrainzUser: Nothing
-          , lastfmUser: Nothing
-          , lastfmApiKey: Nothing
           , discogsToken: Nothing
           , cosineApiKey: Nothing
           , databaseFile: ""
@@ -176,16 +174,15 @@ main = runSpecAndExitProcess [ consoleReporter ] do
         let
           sources = coverSources "release/id" "The Artist" "The Release"
             coverConfig
-        map _.name sources `shouldEqual` [ "caa", "discogs", "lastfm" ]
+        map _.name sources `shouldEqual` [ "caa", "discogs" ]
         map _.s3Key sources `shouldEqual`
           [ "covers/caa/release_id.avif"
           , "covers/discogs/The_Artist-The_Release.avif"
-          , "covers/lastfm/The_Artist-The_Release.avif"
           ]
 
       it "omits CAA when no release MBID is available" do
         let sources = coverSources "" "The Artist" "The Release" coverConfig
-        map _.name sources `shouldEqual` [ "discogs", "lastfm" ]
+        map _.name sources `shouldEqual` [ "discogs" ]
 
     describe "fromString" do
       it "maps all valid field names" do
@@ -399,8 +396,6 @@ main = runSpecAndExitProcess [ consoleReporter ] do
           let
             dummyConfig =
               { listenbrainzUser: Nothing
-              , lastfmUser: Nothing
-              , lastfmApiKey: Nothing
               , discogsToken: Nothing
               , cosineApiKey: Nothing
               , databaseFile: ""
@@ -971,221 +966,6 @@ main = runSpecAndExitProcess [ consoleReporter ] do
       contains (Pattern "filip") html `shouldEqual` true
       contains (Pattern "registrationEnabled") html `shouldEqual` true
 
-  describe "Last.fm Support" do
-    let
-      parseTrack :: String -> Json
-      parseTrack s = case parseJson s of
-        Right j -> j
-        Left _ -> encodeJson ([] :: Array Int) -- fallback that will produce Nothing
-
-    describe "parseLastfmResponse" do
-      it "parses standard response with multiple tracks" do
-        let
-          j = parseTrack
-            """
-            {
-              "recenttracks": {
-                "track": [
-                  { "name": "Track 1" },
-                  { "name": "Track 2" }
-                ],
-                "@attr": { "totalPages": "10" }
-              }
-            }
-          """
-        case parseLastfmResponse j of
-          Just { tracks, totalPages } -> do
-            length tracks `shouldEqual` 2
-            totalPages `shouldEqual` 10
-          Nothing -> do
-            fail "Should have parsed"
-
-      it "parses response with a single track (as object)" do
-        let
-          j = parseTrack
-            """
-            {
-              "recenttracks": {
-                "track": { "name": "Single Track" },
-                "@attr": { "totalPages": "1" }
-              }
-            }
-          """
-        case parseLastfmResponse j of
-          Just { tracks, totalPages } -> do
-            length tracks `shouldEqual` 1
-            totalPages `shouldEqual` 1
-          Nothing -> do
-            fail "Should have parsed single track object"
-
-      it "parses response with no tracks" do
-        let
-          j = parseTrack
-            """
-            {
-              "recenttracks": {
-                "@attr": { "totalPages": "0" }
-              }
-            }
-          """
-        case parseLastfmResponse j of
-          Just { tracks, totalPages } -> do
-            length tracks `shouldEqual` 0
-            totalPages `shouldEqual` 0
-          Nothing -> do
-            fail "Should have parsed empty tracks"
-
-      it "parses response where totalPages is a number" do
-        let
-          j = parseTrack
-            """
-            {
-              "recenttracks": {
-                "track": [],
-                "@attr": { "totalPages": 5 }
-              }
-            }
-          """
-        case parseLastfmResponse j of
-          Just { totalPages } -> do
-            totalPages `shouldEqual` 5
-          Nothing -> do
-            fail "Should have parsed numeric totalPages"
-
-      it "rejects malformed responses" do
-        case parseLastfmResponse (parseTrack "{ \"recenttracks\": {} }") of
-          Nothing -> pure unit
-          Just _ -> fail "Malformed response should not parse"
-
-    describe "lastfmTrackToListen" do
-      it "parses a valid track with MBID" do
-        let
-          j = parseTrack
-            """
-            {
-              "name": "Test Track",
-              "artist": { "#text": "Test Artist" },
-              "album": { "#text": "Test Album", "mbid": "album-mbid-123" },
-              "date": { "uts": "1600000000", "#text": "13 Sep 2020, 12:00" }
-            }
-          """
-        case lastfmTrackToListen j of
-          Nothing ->
-            fail "Expected Just Listen, got Nothing"
-          Just (Listen { listenedAt, trackMetadata: TrackMetadata m }) -> do
-            listenedAt `shouldEqual` Just 1600000000
-            m.trackName `shouldEqual` Just "Test Track"
-            m.artistName `shouldEqual` Just "Test Artist"
-            m.releaseName `shouldEqual` Just "Test Album"
-            m.mbidMapping `shouldEqual` Just
-              ( MbidMapping
-                  { releaseMbid: Just "album-mbid-123"
-                  , caaReleaseMbid: Just "album-mbid-123"
-                  }
-              )
-
-      it "treats empty album MBID as Nothing" do
-        let
-          j = parseTrack
-            """
-            {
-              "name": "Track",
-              "artist": { "#text": "Artist" },
-              "album": { "#text": "Album", "mbid": "" },
-              "date": { "uts": "1600000001", "#text": "13 Sep 2020, 12:01" }
-            }
-          """
-        case lastfmTrackToListen j of
-          Nothing ->
-            fail "Expected Just Listen, got Nothing"
-          Just (Listen { trackMetadata: TrackMetadata m }) ->
-            m.mbidMapping `shouldEqual` Just
-              (MbidMapping { releaseMbid: Nothing, caaReleaseMbid: Nothing })
-
-      it "skips nowplaying tracks (no date field)" do
-        let
-          j = parseTrack
-            """
-            {
-              "@attr": { "nowplaying": "true" },
-              "name": "Now Playing Track",
-              "artist": { "#text": "Artist" },
-              "album": { "#text": "Album", "mbid": "" }
-            }
-          """
-        lastfmTrackToListen j `shouldEqual` Nothing
-
-      it "returns Nothing when artist field is missing" do
-        let
-          j = parseTrack
-            """
-            {
-              "name": "Track",
-              "album": { "#text": "Album", "mbid": "" },
-              "date": { "uts": "1600000002", "#text": "13 Sep 2020, 12:02" }
-            }
-          """
-        lastfmTrackToListen j `shouldEqual` Nothing
-
-      it "returns Nothing when date.uts is not a valid integer" do
-        let
-          j = parseTrack
-            """
-            {
-              "name": "Track",
-              "artist": { "#text": "Artist" },
-              "album": { "#text": "Album", "mbid": "" },
-              "date": { "uts": "not-a-number", "#text": "?" }
-            }
-          """
-        lastfmTrackToListen j `shouldEqual` Nothing
-
-      it "uses album MBID for both releaseMbid and caaReleaseMbid" do
-        let
-          j = parseTrack
-            """
-            {
-              "name": "Track",
-              "artist": { "#text": "Artist" },
-              "album": { "#text": "Album", "mbid": "mbid-xyz" },
-              "date": { "uts": "1600000003", "#text": "13 Sep 2020, 12:03" }
-            }
-          """
-        case lastfmTrackToListen j of
-          Nothing ->
-            fail "Expected Just Listen, got Nothing"
-          Just (Listen { trackMetadata: TrackMetadata m }) ->
-            m.mbidMapping `shouldEqual` Just
-              ( MbidMapping
-                  { releaseMbid: Just "mbid-xyz"
-                  , caaReleaseMbid: Just "mbid-xyz"
-                  }
-              )
-
-      it "inserts and retrieves a Last.fm-style listen from the database" do
-        conn <- connect ":memory:"
-        initDb conn
-        initReleaseMetadata conn
-        let
-          j = parseTrack
-            """
-            {
-              "name": "Last.fm Track",
-              "artist": { "#text": "Last.fm Artist" },
-              "album": { "#text": "Last.fm Album", "mbid": "" },
-              "date": { "uts": "1700000000", "#text": "14 Nov 2023, 22:13" }
-            }
-          """
-        case lastfmTrackToListen j of
-          Nothing ->
-            fail "lastfmTrackToListen returned Nothing"
-          Just listen -> do
-            upsertScrobble conn listen
-            exists <- checkExists conn 1700000000
-            exists `shouldEqual` true
-            listens <- getScrobbles conn 10 0 Nothing Nothing
-            length listens `shouldEqual` 1
-
   describe "Admin auth" do
     it "parses Bearer tokens" do
       parseBearer (Just "Bearer secret") `shouldEqual` Just "secret"
@@ -1218,7 +998,6 @@ main = runSpecAndExitProcess [ consoleReporter ] do
         , displayName: "Alice"
         , email: "a@x.com"
         , listenbrainzUser: Just "alice_lb"
-        , lastfmUser: Nothing
         }
       pending <- listByStatus conn "pending"
       length pending `shouldEqual` 1
@@ -1231,7 +1010,6 @@ main = runSpecAndExitProcess [ consoleReporter ] do
           r.slug `shouldEqual` "alice"
           r.displayName `shouldEqual` "Alice"
           r.listenbrainzUser `shouldEqual` Just "alice_lb"
-          r.lastfmUser `shouldEqual` Nothing
           mReg <- getById conn r.id
           map _.slug mReg `shouldEqual` Just "alice"
           setStatus conn lock r.id "denied"

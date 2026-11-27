@@ -1,6 +1,6 @@
 # corpus
 
-Corpus is a self-hosted listening history dashboard for ListenBrainz and Last.fm. It stores scrobbles in DuckDB, adds release metadata, caches cover art and serves an Elm web interface.
+Corpus is a self-hosted listening history dashboard for ListenBrainz. It stores scrobbles in DuckDB, adds release metadata, caches cover art and serves an Elm web interface.
 
 ## Documentation
 
@@ -42,7 +42,7 @@ Corpus shows tokens once when you create, reset or approve a user. Store them se
 |---|---|
 | `CORPUS_USERS_FILE` | Static user configuration (default: `users.json`) |
 | `DATABASE_PATH` | Directory containing user databases |
-| `LASTFM_API_KEY`, `DISCOGS_TOKEN` | Last.fm sync, and genre and cover fallbacks |
+| `DISCOGS_TOKEN` | Genre and cover fallbacks |
 | `S3_BUCKET` and `AWS_*` | Cover cache and database backups |
 | `COSINE_API_KEY` | Similar-track lookup |
 | `PORT`, `HOST` | HTTP listener (defaults: `8000`, `127.0.0.1`) |

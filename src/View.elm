@@ -114,8 +114,7 @@ renderAboutView currentSlug allUsers =
             [ extLink "https://github.com/mtmn/corpus" "corpus"
             , text " is a self-hosted proxy that syncs scrobbles from "
             , extLink "https://listenbrainz.org" "ListenBrainz"
-            , text " and "
-            , extLink "https://www.last.fm" "Last.fm."
+            , text "."
             ]
         , if List.isEmpty otherUsers then
             text ""

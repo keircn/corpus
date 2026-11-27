@@ -38,7 +38,6 @@ type Registration =
   , displayName :: String
   , email :: String
   , listenbrainzUser :: Maybe String
-  , lastfmUser :: Maybe String
   , status :: String
   , createdAt :: Int
   }
@@ -49,7 +48,6 @@ type NewRegistration =
   , displayName :: String
   , email :: String
   , listenbrainzUser :: Maybe String
-  , lastfmUser :: Maybe String
   }
 
 -- Paths/route names a slug must never collide with, plus "" (the root user).
@@ -90,7 +88,7 @@ isReservedSlug slug = elem slug reservedSlugs
 initRegistrations :: Connection -> Aff Unit
 initRegistrations conn =
   run conn
-    "CREATE TABLE IF NOT EXISTS registrations (id VARCHAR PRIMARY KEY, slug VARCHAR, display_name VARCHAR, email VARCHAR, listenbrainz_user VARCHAR, lastfm_user VARCHAR, status VARCHAR, created_at BIGINT, decided_at BIGINT)"
+    "CREATE TABLE IF NOT EXISTS registrations (id VARCHAR PRIMARY KEY, slug VARCHAR, display_name VARCHAR, email VARCHAR, listenbrainz_user VARCHAR, status VARCHAR, created_at BIGINT, decided_at BIGINT)"
     []
 
 nowSeconds :: Effect Int
@@ -114,13 +112,12 @@ insertRegistration conn lock r = do
   createdAt <- liftEffect nowSeconds
   withTransaction conn lock $
     run conn
-      "INSERT INTO registrations (id, slug, display_name, email, listenbrainz_user, lastfm_user, status, created_at, decided_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, 0)"
+      "INSERT INTO registrations (id, slug, display_name, email, listenbrainz_user, status, created_at, decided_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, 0)"
       [ toParam id
       , toParam r.slug
       , toParam r.displayName
       , toParam r.email
       , toParam (fromMaybe "" r.listenbrainzUser)
-      , toParam (fromMaybe "" r.lastfmUser)
       , toParam createdAt
       ]
 
@@ -128,7 +125,7 @@ insertRegistration conn lock r = do
 listByStatus :: Connection -> String -> Aff (Array Registration)
 listByStatus conn status = do
   rows <- queryAll conn
-    "SELECT id, slug, display_name, email, listenbrainz_user, lastfm_user, status, created_at FROM registrations WHERE status = ? ORDER BY created_at DESC"
+    "SELECT id, slug, display_name, email, listenbrainz_user, status, created_at FROM registrations WHERE status = ? ORDER BY created_at DESC"
     [ toParam status ]
   pure $ mapMaybe decodeRow rows
 
@@ -136,7 +133,7 @@ listByStatus conn status = do
 getById :: Connection -> String -> Aff (Maybe Registration)
 getById conn id = do
   rows <- queryAll conn
-    "SELECT id, slug, display_name, email, listenbrainz_user, lastfm_user, status, created_at FROM registrations WHERE id = ?"
+    "SELECT id, slug, display_name, email, listenbrainz_user, status, created_at FROM registrations WHERE id = ?"
     [ toParam id ]
   pure $ case mapMaybe decodeRow rows of
     [ r ] -> Just r
@@ -170,7 +167,6 @@ decodeRow json = do
     , displayName: fromMaybe "" (str "display_name")
     , email: fromMaybe "" (str "email")
     , listenbrainzUser: strM "listenbrainz_user"
-    , lastfmUser: strM "lastfm_user"
     , status
     , createdAt
     }

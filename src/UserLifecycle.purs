@@ -16,13 +16,11 @@ import Data.Tuple (Tuple(..))
 import Db (connect, getOrCreateToken, initDb, initReleaseMetadata)
 import Effect.Aff (Aff, forkAff, killFiber, try)
 import Effect.Aff.AVar as Avar
-import Effect.Class (liftEffect)
 import Effect.Exception as Exception
-import Effect.Ref as Ref
 import Log as Log
 import Metadata (enrichMetadata)
 import Server (UserContext)
-import Sync (lbSync, lbSyncLoop, lfSync, lfSyncLoop)
+import Sync (lbSync, lbSyncLoop)
 
 -- | Start one user's DB, sync loops, metadata enrichment, and optional backup.
 startUser :: Boolean -> UserEntry -> Aff (Tuple UserContext (Maybe String))
@@ -32,27 +30,16 @@ startUser isRegistered { slug, name, config } = do
   initDb conn
   initReleaseMetadata conn
   writeLock <- Avar.new unit
-  backfillDoneRef <- liftEffect $ Ref.new false
 
   mToken <- getOrCreateToken conn slug
   for_ mToken \token ->
     Log.info $ "User '" <> slug <> "' token: " <> token
-
-  case config.lastfmUser, config.lastfmApiKey of
-    Just _, Nothing -> Log.warn $ "User '" <> slug <>
-      "': Last.fm sync disabled (missing API key)"
-    _, _ -> pure unit
 
   initialSyncFibers <- traverse forkAff
     $
       [ case config.listenbrainzUser of
           Just username -> Just $ lbSync conn username slug writeLock
           Nothing -> Nothing
-      , case config.lastfmUser, config.lastfmApiKey of
-          Just lfmUser, Just apiKey -> Just $ lfSync conn apiKey lfmUser slug
-            writeLock
-            backfillDoneRef
-          _, _ -> Nothing
       ] # Array.mapMaybe identity
 
   loopFibers <- traverse forkAff
@@ -60,12 +47,6 @@ startUser isRegistered { slug, name, config } = do
       [ case config.listenbrainzUser of
           Just username -> Just $ lbSyncLoop conn username slug writeLock
           Nothing -> Nothing
-      , case config.lastfmUser, config.lastfmApiKey of
-          Just lfmUser, Just apiKey -> Just $ lfSyncLoop conn apiKey lfmUser
-            slug
-            writeLock
-            backfillDoneRef
-          _, _ -> Nothing
       ] # Array.mapMaybe identity
 
   enrichMetadataFiber <- forkAff $ enrichMetadata conn config slug

@@ -65,7 +65,6 @@ init flags url navKey =
       , regName = ""
       , regEmail = ""
       , regLbUser = ""
-      , regLfUser = ""
       , regSubmitting = False
       , regSubmitted = False
       , regError = Nothing
@@ -740,9 +739,6 @@ update msg model =
 
                 FLbUser ->
                     { m | regLbUser = val }
-
-                FLfUser ->
-                    { m | regLfUser = val }
             , Cmd.none
             )
 
@@ -757,7 +753,6 @@ update msg model =
                     , name = model.regName
                     , email = model.regEmail
                     , lbUser = model.regLbUser
-                    , lfUser = model.regLfUser
                     }
                 )
 

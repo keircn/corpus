@@ -99,7 +99,6 @@ regSources reg =
         parts =
             List.filterMap identity
                 [ Maybe.map (\u -> "ListenBrainz: " ++ u) reg.listenbrainzUser
-                , Maybe.map (\u -> "Last.fm: " ++ u) reg.lastfmUser
                 ]
     in
     if List.isEmpty parts then

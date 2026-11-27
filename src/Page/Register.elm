@@ -26,7 +26,6 @@ renderRegister model =
                 , regField "name" "display name" FName model.regName
                 , regField "email" "you will be notified here" FEmail model.regEmail
                 , regField "listenbrainz user (optional)" "" FLbUser model.regLbUser
-                , regField "last.fm user (optional)" "" FLfUser model.regLfUser
                 , case model.regError of
                     Just err ->
                         p [ class "reg-error" ] [ text err ]

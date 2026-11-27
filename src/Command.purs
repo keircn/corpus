@@ -49,7 +49,6 @@ encodeUserEntry
      , name :: Maybe String
      , dbFile :: String
      , lbUser :: Maybe String
-     , lfUser :: Maybe String
      }
   -> Json
 encodeUserEntry e = fromObject $ Object.fromFoldable $ catMaybes
@@ -58,7 +57,6 @@ encodeUserEntry e = fromObject $ Object.fromFoldable $ catMaybes
   , Just $ Tuple "config" $ fromObject $ Object.fromFoldable $ catMaybes
       [ Just $ Tuple "databaseFile" (fromString e.dbFile)
       , map (\u -> Tuple "listenbrainzUser" (fromString u)) e.lbUser
-      , map (\u -> Tuple "lastfmUser" (fromString u)) e.lfUser
       , Just $ Tuple "coverCacheEnabled" (fromBoolean false)
       , Just $ Tuple "backupEnabled" (fromBoolean false)
       , Just $ Tuple "backupIntervalHours" (fromNumber 24.0)
@@ -88,7 +86,7 @@ printUsage :: Aff Unit
 printUsage = liftEffect do
   log "Usage:"
   log
-    "  add-user --slug <slug> --db <file> [--name <name>] [--listenbrainz-user <user>] [--lastfm-user <user>]"
+    "  add-user --slug <slug> --db <file> [--name <name>] [--listenbrainz-user <user>]"
   log "  reset-token --slug <slug>"
   log "  list-users"
   exit' 1
@@ -108,7 +106,6 @@ addUser configFile args = do
   let
     mName = getFlag "--name" args
     mLbUser = getFlag "--listenbrainz-user" args
-    mLfUser = getFlag "--lastfm-user" args
   slug <- maybe (liftEffect $ log "Error: --slug is required" *> exit' 1) pure
     (getFlag "--slug" args)
   dbFile <- maybe (liftEffect $ log "Error: --db is required" *> exit' 1) pure
@@ -123,7 +120,7 @@ addUser configFile args = do
     $ log ("Error: user '" <> slug <> "' already exists") *> exit' 1
   let
     newEntry = encodeUserEntry
-      { slug, name: mName, dbFile, lbUser: mLbUser, lfUser: mLfUser }
+      { slug, name: mName, dbFile, lbUser: mLbUser }
   writeUsersJson configFile (snoc users newEntry)
   conn <- Db.connect dbFile
   Db.initDb conn

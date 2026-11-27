@@ -1,6 +1,6 @@
 # Corpus architecture
 
-Corpus is a self-hosted listening history dashboard. It synchronises ListenBrainz and Last.fm scrobbles for multiple users.
+Corpus is a self-hosted listening history dashboard. It synchronises ListenBrainz scrobbles for multiple users.
 
 ## System components
 
@@ -9,11 +9,10 @@ The PureScript server runs on Node.js. It:
 
 - serves the frontend, scrobble data, statistics and similar tracks from [cosine.club](https://cosine.club)
 - accepts ListenBrainz-compatible scrobble submissions
-- polls ListenBrainz and Last.fm every 60 seconds
-- backfills Last.fm history older than the oldest stored scrobble
+- polls ListenBrainz every 60 seconds
 - deduplicates matching timestamps using the `listened_at` primary key
-- enriches missing genres, labels and release years from MusicBrainz, Last.fm and Discogs
-- redirects and caches cover art, trying Cover Art Archive, Discogs and then Last.fm
+- enriches missing genres, labels and release years from MusicBrainz and Discogs
+- redirects and caches cover art, trying Cover Art Archive and then Discogs
 - provides optional registration, administration, email and Prometheus metrics
 
 External API requests time out after 10 seconds. Image requests time out after 20 seconds. Corpus retries temporary sync failures up to 5 times, waiting longer each time. It does not retry responses it cannot parse.
@@ -78,9 +77,9 @@ Stop Corpus before using these commands to change `users.json`:
 # Add a new user (creates the DB, prints the API token once)
 node server.js add-user --slug filip --name "Filip" --db filip.db
 
-# Optional: link a ListenBrainz or Last.fm account at creation time
+# Optional: link a ListenBrainz account at creation time
 node server.js add-user --slug filip --name "Filip" --db filip.db \
-  --listenbrainz-user filip --lastfm-user filiplfm
+  --listenbrainz-user filip
 
 # List all users
 node server.js list-users
@@ -99,13 +98,13 @@ User configuration has 2 layers:
 1. `users.json` defines user slugs, source usernames, database filenames and feature flags. The CLI manages this file. Corpus reads it at startup from `CORPUS_USERS_FILE`, which defaults to `users.json`.
 2. Environment variables provide shared API keys and S3 credentials at runtime. Corpus also loads them from a `.env` file.
 
-Each user has a separate DuckDB connection, sync loop and write lock. The lock runs ListenBrainz and Last.fm sync transactions in sequence. HTTP reads use DuckDB snapshots without taking the lock.
+Each user has a separate DuckDB connection, sync loop and write lock. The lock runs ListenBrainz sync transactions in sequence. HTTP reads use DuckDB snapshots without taking the lock.
 
 ### Registration
 
 When registration is enabled:
 
-1. A visitor submits a username, name and email address at `/register`. They can also add ListenBrainz and Last.fm usernames.
+1. A visitor submits a username, name and email address at `/register`. They can also add a ListenBrainz username.
 2. Corpus rejects usernames that are taken, reserved for a route, or not made of lowercase letters, numbers and dashes.
 3. Corpus stores the request as pending and emails `ADMIN_EMAIL`, if set.
 4. An administrator approves or denies the request at `/admin`.
@@ -130,7 +129,7 @@ An administrator can remove a self-registered user without restarting Corpus. Co
 |---|---|---|
 | `CORPUS_USERS_FILE` | `users.json` | Path to the user configuration file |
 | `DATABASE_PATH` | current directory | Directory for all user database files |
-| `LASTFM_API_KEY` | not set | Last.fm API key for sync, genre and cover fallbacks |
+
 | `DISCOGS_TOKEN` | not set | Discogs token for genre and cover fallbacks |
 | `S3_BUCKET` | not set | S3 bucket for cover caching and backups |
 | `S3_REGION` | `us-east-1` | S3 region |
@@ -155,19 +154,17 @@ An administrator can remove a self-registered user without restarting Corpus. Co
 
 Corpus does not start if a user needs a variable that is not set:
 
-- any user with `lastfmUser` needs `LASTFM_API_KEY`
 - any user with `coverCacheEnabled` or `backupEnabled` needs `S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_ENDPOINT_URL`
 
 ### `users.json` fields
 
-`slug` and `name` belong to each item in `users`. Put the other fields in its `config` object. Only `name`, `listenbrainzUser` and `lastfmUser` are optional.
+`slug` and `name` belong to each item in `users`. Put the other fields in its `config` object. Only `name` and `listenbrainzUser` are optional.
 
 | Field | Type | Purpose |
 |---|---|---|
 | `slug` | string | URL slug (`""` for the root user, `"filip"` for `/u/filip`) |
 | `name` | optional string | Display name, which defaults to the slug |
 | `listenbrainzUser` | optional string | ListenBrainz username |
-| `lastfmUser` | optional string | Last.fm username |
 | `databaseFile` | string | DuckDB filename, relative to `DATABASE_PATH` |
 | `coverCacheEnabled` | boolean | Enables S3 cover caching |
 | `backupEnabled` | boolean | Enables periodic S3 database backups |
@@ -184,20 +181,12 @@ ListenBrainz uses timestamp-based pagination:
 2. Insert new scrobbles. Stop if an existing timestamp is found.
 3. Page backwards using `max_ts` until caught up.
 
-Last.fm uses page-based pagination:
-1. Fetch page 1 (the most recent 200 scrobbles) from the Last.fm API.
-2. Insert new scrobbles. Stop if an existing timestamp is found.
-3. Page through later pages using `totalPages` from the API response until caught up.
-4. Request scrobbles older than the oldest stored scrobble, and insert any it finds.
-
-The last step imports older Last.fm history, for example from before a user started using ListenBrainz.
-
 ### Metadata enrichment
 
 Corpus enriches up to 10 releases without metadata and 10 releases without a genre at a time:
 
 1. Corpus requests release details from MusicBrainz, one request every 1.1 seconds.
-2. If MusicBrainz has no genre, it tries Last.fm and then Discogs.
+2. If MusicBrainz has no genre, it tries Discogs.
 3. It updates `release_metadata` with any details found.
 4. If no source has a genre, it records the time in `genre_checked_at` and tries again after 7 days.
 
@@ -208,7 +197,6 @@ When a client requests a cover, Corpus tries these sources in order:
 
 1. Cover Art Archive, if the scrobble has a release MBID.
 2. Discogs, if `DISCOGS_TOKEN` is set.
-3. Last.fm, if `LASTFM_API_KEY` is set.
 
 For each source, Corpus checks the S3 cache first, then asks the source. It redirects the client to the first image it finds.
 

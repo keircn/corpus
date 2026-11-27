@@ -84,7 +84,7 @@ fetchSimilarTracks artist track =
         }
 
 
-submitRegistration : { slug : String, name : String, email : String, lbUser : String, lfUser : String } -> Cmd Msg
+submitRegistration : { slug : String, name : String, email : String, lbUser : String } -> Cmd Msg
 submitRegistration f =
     let
         optional key val =
@@ -101,7 +101,6 @@ submitRegistration f =
                  , ( "email", E.string (String.trim f.email) )
                  ]
                     ++ optional "listenbrainzUser" f.lbUser
-                    ++ optional "lastfmUser" f.lfUser
                 )
     in
     Http.post
@@ -345,13 +344,12 @@ similarTrackDecoder =
 
 registrationDecoder : Decoder Registration
 registrationDecoder =
-    D.map6 Registration
+    D.map5 Registration
         (D.field "id" D.string)
         (D.field "slug" D.string)
         (D.field "name" D.string)
         (D.field "email" D.string)
         (D.maybe (D.field "listenbrainzUser" D.string))
-        (D.maybe (D.field "lastfmUser" D.string))
 
 
 approveResponseDecoder : Decoder ApproveResponse

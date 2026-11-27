@@ -2,7 +2,6 @@ module Metadata
   ( MbData
   , GenreSource
   , fetchMusicBrainzRelease
-  , fetchLastfmGenre
   , fetchDiscogsGenre
   , fetchFallbackGenre
   , enrichMetadata
@@ -110,47 +109,6 @@ fetchMusicBrainzRelease mbid = do
         ", will retry"
       pure Nothing
 
--- | Fetch the first Last.fm genre for an artist and release.
-fetchLastfmGenre :: Maybe String -> String -> String -> Aff (Maybe String)
-fetchLastfmGenre Nothing _ _ = do
-  Log.warn "lastfmApiKey not configured for genre fallback"
-  pure Nothing
-fetchLastfmGenre (Just k) artist release = do
-  let
-    searchUrl =
-      "https://ws.audioscrobbler.com/2.0/?method=album.getinfo&artist="
-        <> (fromMaybe "" $ encodeURIComponent artist)
-        <> "&album="
-        <> (fromMaybe "" $ encodeURIComponent release)
-        <> "&format=json"
-        <> "&api_key="
-        <> k
-  Log.info $ "Fetching Last.fm genre for: " <> artist <> " - " <> release
-  result <- try $ withTimeout apiTimeout "Last.fm genre lookup" $ fetch
-    searchUrl
-    { method: GET }
-  case result of
-    Right fetchRes | fetchRes.status == 200 -> do
-      jsonResult <- try $ fromJson fetchRes.json
-      case jsonResult of
-        Left err -> do
-          Log.error $ "Last.fm genre JSON error: " <> Exception.message err
-          pure Nothing
-        Right json -> do
-          let
-            genre = do
-              obj <- toObject json
-              album <- Object.lookup "album" obj >>= toObject
-              tags <- Object.lookup "tags" album >>= toObject
-              mTag <- Object.lookup "tag" tags
-              let tagArray = fromMaybe [ mTag ] (toArray mTag)
-              firstTag <- tagArray !! 0 >>= toObject
-              Object.lookup "name" firstTag >>= toString
-          pure genre
-    _ -> do
-      Log.warn "Last.fm genre API request failed"
-      pure Nothing
-
 -- | Fetch the first Discogs genre for an artist and release.
 fetchDiscogsGenre :: Maybe String -> String -> String -> Aff (Maybe String)
 fetchDiscogsGenre Nothing _ _ = do
@@ -251,12 +209,7 @@ enrichMetadata conn cfg slug = forever do
                 Just { artist, release } -> do
                   let
                     sources =
-                      [ { name: "lastfm"
-                        , enabled: isJust cfg.lastfmApiKey
-                        , fetch: fetchLastfmGenre cfg.lastfmApiKey artist
-                            release
-                        }
-                      , { name: "discogs"
+                      [ { name: "discogs"
                         , enabled: isJust cfg.discogsToken
                         , fetch: fetchDiscogsGenre cfg.discogsToken artist
                             release

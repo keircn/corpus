@@ -7,7 +7,7 @@ Corpus stores each user's listening history in [DuckDB](https://duckdb.org/). It
 Each user has a separate DuckDB database file with 3 tables. A shared `registrations.db` file holds registration state.
 
 ### `scrobbles`
-Stores listening history from ListenBrainz and Last.fm.
+Stores listening history from ListenBrainz.
 
 | Column | Type | Description |
 | :--- | :--- | :--- |
@@ -19,7 +19,7 @@ Stores listening history from ListenBrainz and Last.fm.
 | `caa_release_mbid` | VARCHAR | Cover Art Archive release ID |
 
 ### `release_metadata`
-Stores metadata fetched from MusicBrainz, Last.fm and Discogs.
+Stores metadata fetched from MusicBrainz and Discogs.
 
 | Column | Type | Description |
 | :--- | :--- | :--- |
@@ -49,7 +49,6 @@ Stores self-registration requests in the shared `registrations.db` file, not in 
 | `display_name` | VARCHAR | Display name |
 | `email` | VARCHAR | Contact email address |
 | `listenbrainz_user` | VARCHAR | ListenBrainz username |
-| `lastfm_user` | VARCHAR | Last.fm username |
 | `status` | VARCHAR | `pending`, `approved`, `denied` or `revoked` |
 | `created_at` | BIGINT | Unix timestamp of the request |
 | `decided_at` | BIGINT | Unix timestamp of the last status change |

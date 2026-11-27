@@ -18,8 +18,7 @@ import Data.Argonaut.Core (Json)
 import Data.Either (Either(..))
 import Data.Function.Uncurried (Fn3, runFn3)
 import Data.Int (fromString) as Data.Int
-import Data.Maybe (Maybe(..), fromMaybe, isJust, isNothing)
-import Data.String (joinWith)
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Traversable (traverse)
 import Effect (Effect)
 import Effect.Aff (Aff, makeAff, nonCanceler)
@@ -30,8 +29,6 @@ import Node.Process (cwd, lookupEnv)
 -- | Per-user runtime configuration after environment values are resolved.
 type UserConfig =
   { listenbrainzUser :: Maybe String
-  , lastfmUser :: Maybe String
-  , lastfmApiKey :: Maybe String
   , discogsToken :: Maybe String
   , cosineApiKey :: Maybe String
   , databaseFile :: String
@@ -97,13 +94,11 @@ s3ConfigFromUser cfg =
   , addressingStyle: cfg.awsS3AddressingStyle
   }
 
--- Defaults for a self-registered user; creds and DB path are filled by fillUserConfigFromEnv.
+-- | Create defaults for a newly self-registered user; creds and DB path are filled by fillUserConfigFromEnv.
 -- | Create defaults for a newly self-registered user.
-defaultUserConfig :: String -> Maybe String -> Maybe String -> UserConfig
-defaultUserConfig databaseFile listenbrainzUser lastfmUser =
+defaultUserConfig :: String -> Maybe String -> UserConfig
+defaultUserConfig databaseFile listenbrainzUser =
   { listenbrainzUser
-  , lastfmUser
-  , lastfmApiKey: Nothing
   , discogsToken: Nothing
   , cosineApiKey: Nothing
   , databaseFile
@@ -183,9 +178,7 @@ loadConfig path = do
       , smtp
       , users: filledUsers
       }
-  case validateConfig fullConfig of
-    Left msg -> throwError (error msg)
-    Right cfg -> pure cfg
+  pure fullConfig
 
 -- | Read an optional environment variable, treating an empty string as unset.
 lookupEnvOpt :: String -> Aff (Maybe String)
@@ -200,7 +193,6 @@ lookupEnvOpt key = do
 -- | Fill shared credentials and resolve the database path from the environment.
 fillUserConfigFromEnv :: UserConfig -> Aff UserConfig
 fillUserConfigFromEnv cfg = do
-  lastfmApiKey <- liftEffect $ lookupEnv "LASTFM_API_KEY"
   discogsToken <- liftEffect $ lookupEnv "DISCOGS_TOKEN"
   cosineApiKey <- liftEffect $ lookupEnv "COSINE_API_KEY"
   s3Bucket <- lookupEnvOpt "S3_BUCKET"
@@ -216,8 +208,7 @@ fillUserConfigFromEnv cfg = do
       Nothing -> defaultPath <> "/" <> file
       Just dir -> dir <> "/" <> file
   pure cfg
-    { lastfmApiKey = lastfmApiKey
-    , discogsToken = discogsToken
+    { discogsToken = discogsToken
     , cosineApiKey = cosineApiKey
     , s3Bucket = s3Bucket
     , s3Region = s3Region
@@ -227,30 +218,6 @@ fillUserConfigFromEnv cfg = do
     , awsS3AddressingStyle = awsS3AddressingStyle
     , databaseFile = resolvePath cfg.databaseFile
     }
-
-validateConfig :: AppConfig -> Either String AppConfig
-validateConfig cfg = do
-  _ <- traverse validateUserEntry cfg.users
-  pure cfg
-
--- | Validate a user entry. Object storage is optional: when no S3 bucket is
--- | configured, cover caching and database backups are skipped.
-validateUserEntry :: UserEntry -> Either String UserEntry
-validateUserEntry entry =
-  let
-    c = entry.config
-    label = if entry.slug == "" then "root" else entry.slug
-    lfmMissing =
-      if isJust c.lastfmUser && isNothing c.lastfmApiKey then
-        [ "LASTFM_API_KEY" ]
-      else []
-    missing = lfmMissing
-  in
-    if missing == [] then Right entry
-    else Left
-      ( "User '" <> label <> "': missing required env vars: " <> joinWith ", "
-          missing
-      )
 
 mapLeft :: forall a b c. (a -> c) -> Either a b -> Either c b
 mapLeft f (Left a) = Left (f a)
@@ -277,15 +244,12 @@ decodeUserConfig :: Json -> Either String UserConfig
 decodeUserConfig json = do
   obj <- mapLeft show $ decodeJson json
   listenbrainzUser <- mapLeft show $ obj .:? "listenbrainzUser"
-  lastfmUser <- mapLeft show $ obj .:? "lastfmUser"
   databaseFile <- mapLeft show $ obj .: "databaseFile"
   coverCacheEnabled <- mapLeft show $ obj .: "coverCacheEnabled"
   backupEnabled <- mapLeft show $ obj .: "backupEnabled"
   backupIntervalHours <- mapLeft show $ obj .: "backupIntervalHours"
   pure
     { listenbrainzUser
-    , lastfmUser
-    , lastfmApiKey: Nothing
     , discogsToken: Nothing
     , cosineApiKey: Nothing
     , databaseFile

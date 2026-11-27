@@ -58,7 +58,6 @@ type RegisterPayload =
   , name :: String
   , email :: String
   , listenbrainzUser :: Maybe String
-  , lastfmUser :: Maybe String
   }
 
 -- Trims optional input and treats an empty string as absent.
@@ -82,7 +81,6 @@ serveRegister env req res =
           displayName = trim payload.name
           email = trim payload.email
           lb = normalizeOptional payload.listenbrainzUser
-          lf = normalizeOptional payload.lastfmUser
         contexts <- liftEffect $ Ref.read env.contextsRef
         let existingSlugs = map _.slug contexts
         if displayName == "" || email == "" then
@@ -99,7 +97,7 @@ serveRegister env req res =
               "That username has already been requested"
           else do
             Reg.insertRegistration env.regConn env.regLock
-              { slug, displayName, email, listenbrainzUser: lb, lastfmUser: lf }
+              { slug, displayName, email, listenbrainzUser: lb }
             notifyAdminNewRegistration env slug displayName email
             liftEffect $ respond "application/json" 200 """{"status":"ok"}"""
               res
@@ -118,7 +116,6 @@ regToJson
      , name :: String
      , email :: String
      , listenbrainzUser :: Maybe String
-     , lastfmUser :: Maybe String
      , status :: String
      , createdAt :: Int
      }
@@ -128,7 +125,6 @@ regToJson r =
   , name: r.displayName
   , email: r.email
   , listenbrainzUser: r.listenbrainzUser
-  , lastfmUser: r.lastfmUser
   , status: r.status
   , createdAt: r.createdAt
   }
@@ -253,7 +249,6 @@ registrationUserEntry reg = do
   let
     base = defaultUserConfig ("corpus-" <> reg.slug <> ".db")
       reg.listenbrainzUser
-      reg.lastfmUser
   config <- fillUserConfigFromEnv base
   pure { slug: reg.slug, name: Just reg.displayName, config }
 

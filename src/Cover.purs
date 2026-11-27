@@ -4,7 +4,6 @@ module Cover
   , cacheJobKey
   , tryStartCacheFill
   , finishCacheFill
-  , fetchLastfmCoverUrl
   , fetchDiscogsCoverUrl
   , coverSources
   , serveCover
@@ -128,38 +127,6 @@ fetchCaaCoverUrl mbid = do
     _ ->
       pure Nothing
 
--- | Find a Last.fm album cover URL when the service is configured.
-fetchLastfmCoverUrl :: UserConfig -> String -> String -> Aff (Maybe String)
-fetchLastfmCoverUrl cfg artist release = case cfg.lastfmApiKey of
-  Nothing ->
-    pure Nothing
-  Just k -> do
-    let
-      searchUrl =
-        "https://ws.audioscrobbler.com/2.0/?method=album.getinfo&artist="
-          <> (fromMaybe "" $ encodeURIComponent artist)
-          <> "&album="
-          <> (fromMaybe "" $ encodeURIComponent release)
-          <> "&format=json&api_key="
-          <> k
-    Log.info $ "Searching Last.fm for: " <> artist <> " - " <> release
-    let headers = { "User-Agent": "corpus/1.0 (+https://sr.ht/~mtmn/corpus)" }
-    result <- try $ withTimeout apiTimeout "Last.fm cover lookup" $ fetch
-      searchUrl
-      { method: GET, headers }
-    case result of
-      Right fr | fr.status == 200 -> do
-        json <- fromJson fr.json
-        pure $ do
-          obj <- toObject json
-          album <- Object.lookup "album" obj >>= toObject
-          images <- Object.lookup "image" album >>= toArray
-          imgObj <- images !! 2 >>= toObject
-          u <- Object.lookup "#text" imgObj >>= toString
-          if u == "" then Nothing else Just u
-      _ ->
-        pure Nothing
-
 -- | Find a Discogs release cover URL when the service is configured.
 fetchDiscogsCoverUrl :: UserConfig -> String -> String -> Aff (Maybe String)
 fetchDiscogsCoverUrl cfg artist release = case cfg.discogsToken of
@@ -213,12 +180,6 @@ coverSources mbid artist release cfg =
         , findUrl:
             if artist == "" || release == "" then pure Nothing
             else fetchDiscogsCoverUrl cfg artist release
-        }
-      , { name: "lastfm"
-        , s3Key: "covers/lastfm/" <> safeArtist <> "-" <> safeRelease <> ".avif"
-        , findUrl:
-            if artist == "" || release == "" then pure Nothing
-            else fetchLastfmCoverUrl cfg artist release
         }
       ]
 
