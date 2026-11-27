@@ -1,0 +1,18 @@
+[Unit]
+Description=Corpus listening history dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=corpus
+Group=corpus
+WorkingDirectory=/opt/corpus
+EnvironmentFile=/opt/corpus/.env
+ExecStart=/usr/bin/node /opt/corpus/server.js
+Restart=on-failure
+RestartSec=5
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target
